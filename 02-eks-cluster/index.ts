@@ -1,11 +1,13 @@
 import { CfnOutput, Stack, StackProps, CfnJson, Tags } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { Addon, Cluster, KubernetesVersion, ServiceAccount } from 'aws-cdk-lib/aws-eks';
+import { Addon, Cluster, HelmChart, KubernetesVersion, ServiceAccount } from 'aws-cdk-lib/aws-eks';
 import { KubectlV32Layer } from '@aws-cdk/lambda-layer-kubectl-v32';
 import { ManagedPolicy, OpenIdConnectPrincipal, PolicyDocument, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { CfnInclude } from 'aws-cdk-lib/cloudformation-include';
+import { DnsPolicy } from 'aws-cdk-lib/aws-batch';
+import { env } from 'process';
 
 export class EKSCluster extends Stack {
   constructor(scope: Construct, id: string, props: StackProps) {
@@ -125,6 +127,52 @@ export class EKSCluster extends Stack {
         addonVersion: 'v1.11.4-eksbuild.2',
     });
 
+    new Addon(this, 'ebs-csi-driver', {
+        addonName: 'aws-ebs-csi-driver',
+        cluster: cluster,
+        addonVersion: 'v1.46.0-eksbuild.1',
+    });
+
+    new HelmChart(this, 'KarpenterHelmChart', {
+      cluster: cluster,
+      chart: 'karpenter',
+      release: 'karpenter',
+      repository: 'oci://public.ecr.aws/karpenter/karpenter',
+      namespace: 'karpenter',
+      skipCrds: false,
+      version: '1.4.0',
+      values: {
+        dnsPolicy: DnsPolicy.DEFAULT,
+        serviceAccount: {
+          create: false,
+          name: karpenterControllerServiceAccount.serviceAccountName,
+        },
+        controller: {
+          env: {
+            AWS_REGION: env.AWS_REGION
+          },
+        },
+        settings: {
+          clusterName: cluster.clusterName,
+          interruptionQueue: cluster.clusterName,
+        }
+      },
+    });
+
+    new HelmChart(this, 'CertManagerHelmChart', {
+      cluster: cluster,
+      chart: 'cert-manager',
+      release: 'cert-manager',
+      repository: 'https://charts.jetstack.io',
+      namespace: 'cert-manager',
+      version: '1.17.2',
+      createNamespace: true,
+      wait: false,
+      values: {
+        installCRDs: true,
+      }
+    });
+    
     new CfnOutput(this, 'ClusterName', {
       value: cluster.clusterName,
     });
