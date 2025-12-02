@@ -110,9 +110,9 @@ export class EKSCluster extends Stack {
     karpenterControllerServiceAccount.node.addDependency(karpenterNamespace);
 
     new Addon(this, 'vpc-cni', {
-        addonName: 'vpc-cni',
-        cluster: cluster,
-        addonVersion: 'v1.19.2-eksbuild.1',
+      addonName: 'vpc-cni',
+      cluster: cluster,
+      addonVersion: 'v1.19.2-eksbuild.1',
     });
 
     new Addon(this, 'kube-proxy', {
